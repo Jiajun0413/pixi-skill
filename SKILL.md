@@ -1,5 +1,5 @@
 ---
-name: pixi
+name: pixi-skill
 description: "Manage Pixi workspaces, manifests, environments, tasks, lockfiles, and global tool environments. Use when working with pixi.toml, pyproject.toml configured for Pixi, pixi.lock, or Pixi global manifests; when adding or removing Conda/PyPI dependencies; when defining tasks, activation, features, or target-specific settings; or when installing and exposing global CLI tools."
 ---
 

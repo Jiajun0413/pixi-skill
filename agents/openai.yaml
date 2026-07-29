@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixi"
+  short_description: "Use Pixi for workspaces and global tools"
+  default_prompt: "Use $pixi to manage this project's Pixi workspace, tasks, dependencies, or global tool setup."

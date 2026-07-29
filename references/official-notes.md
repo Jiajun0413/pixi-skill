@@ -1,79 +1,99 @@
 # Pixi official notes
 
-Primary source when the workflow is unclear — official docs (canonical at `pixi.prefix.dev/latest/`):
+Detailed reference for the pixi-skill. Read when editing manifests by hand, debugging activation/native errors, or migrating an older manifest.
 
-- Overview: `https://pixi.prefix.dev/latest/`
-- Getting started: `https://pixi.prefix.dev/latest/getting_started/`
-- Manifest reference: `https://pixi.prefix.dev/latest/reference/pixi_manifest/`
-- pyproject.toml: `https://pixi.prefix.dev/latest/python/pyproject_toml/`
-- CLI index: `https://pixi.prefix.dev/latest/reference/cli/pixi/`
-- Multi-environment: `https://pixi.prefix.dev/latest/workspace/multi_environment/`
-- Multi-platform: `https://pixi.prefix.dev/latest/workspace/multi_platform_configuration/`
-- Environment variables: `https://pixi.prefix.dev/latest/reference/environment_variables/`
-- `pixi shell-hook`: `https://pixi.prefix.dev/latest/reference/cli/pixi/shell-hook/`
-- Conda and PyPI: `https://pixi.prefix.dev/latest/concepts/conda_pypi/`
-- Lock file: `https://pixi.prefix.dev/latest/workspace/lock_file/`
-- Authentication: `https://pixi.prefix.dev/latest/deployment/authentication/`
-- Global tools: `https://pixi.prefix.dev/latest/global_tools/introduction/`
-- Global manifest: `https://pixi.prefix.dev/latest/global_tools/global_manifest/`
-- Dependency types: `https://pixi.prefix.dev/latest/build/dependency_types/`
-- Changelog: `https://pixi.prefix.dev/latest/CHANGELOG/`
+## Contents
 
-## Official concepts to preserve
+- Docs links
+- Manifest structure
+- Version specifiers
+- Environments & features
+- Tasks
+- PyPI dependencies
+- System requirements / CUDA
+- Target tables
+- Channels & activation
+- Conda + PyPI resolution
+- Lockfile & install flags
+- Global tools
+- Common commands
+- Authentication
+- Troubleshooting
+- Pre-2025 → current migration
 
-### Manifest choice
+## Docs links
 
-- Pixi supports both `pixi.toml` and `pyproject.toml`.
-- Official guidance: `pyproject.toml` for Python projects; `pixi.toml` for non-Python or mixed-language.
-- The required top-level table is `[workspace]` (or `[tool.pixi.workspace]` in pyproject). `name`, `channels`, `platforms` are required. The default channel list is `conda-forge` only.
-- Preserve the current manifest format unless migration is part of the task.
+Canonical: `https://pixi.prefix.dev/latest/`
 
-### Dependency resolution
+- Manifest: `.../reference/pixi_manifest/`
+- pyproject: `.../python/pyproject_toml/`
+- CLI: `.../reference/cli/pixi/`
+- Multi-environment: `.../workspace/multi_environment/`
+- Multi-platform: `.../workspace/multi_platform_configuration/`
+- Lock file: `.../workspace/lock_file/`
+- Authentication: `.../deployment/authentication/`
+- Global tools: `.../global_tools/introduction/`
 
-- Pixi supports Conda and PyPI in one project, resolved Conda-first:
-  1. Resolve Conda dependencies.
-  2. Map Conda packages to PyPI names.
-  3. Resolve remaining PyPI dependencies.
-- When both ecosystems provide a package, the Conda package wins.
-- PyPI resolution may fail because Conda already fixed an incompatible transitive version.
+## Manifest structure
 
-### Activation behavior
-
-- Pixi activation is more than prepending `bin` to `PATH`; dependency activation scripts also run.
-- Behavior can differ between `pixi run`, `pixi exec`, `pixi shell`, and a shell/IDE that only points at the env binary.
-- Customize in the manifest with `[activation]`, `[activation.env]`, `[target.unix.activation.env]`, `[target.win.activation.env]`.
-- Scripts are `.sh`/`.bash` on Unix and `.bat` on Windows; they are *called*, not sourced — only env-var mutations persist into `pixi run`/`pixi shell`.
+Required top-level table: `[workspace]` (`[tool.pixi.workspace]` in pyproject).
 
 ```toml
-[target.unix.activation.env]
-ENV_VAR = "$OTHER_ENV_VAR/unix-value"
-
-[target.win.activation.env]
-ENV_VAR = "%OTHER_ENV_VAR%\\windows-value"
+[workspace]
+name = "my-project"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 ```
 
-### Environment variable priority
+Fields: `name`, `channels`, `platforms` (required); `version`, `authors`, `description`, `license`, `channel-priority` (`"strict"` default, `"disabled"` discouraged), `solve-strategy`, `requires-pixi`, `exclude-newer`, `conda-pypi-map`.
 
-`task.env` > `activation.env` > `activation.scripts` > dependency activation scripts > outside environment variables.
+## Version specifiers
 
-### Inspecting activation
+- Conda: MatchSpec — `"2.0.*"`, `">=1.2,<=1.4"`, `{ version=">=1", channel="pytorch" }`. `pixi add` auto-pins per `--pinning-strategy` (default `semver`).
+- PyPI: PEP 440 — `"~=3.5.0"`, `"==3.1.0"`, `*` = any.
 
-- `pixi shell-hook` prints the activation script for the current shell.
-- `pixi shell-hook --json` shows the env vars activation would set.
-- Use when diagnosing differences between CLI, IDE, task runner, and login shell.
+## Environments & features
 
-### Environment layout and repair
+```toml
+[feature.test.dependencies]
+pytest = "*"
 
-- Environments live under `.pixi/envs/<name>` by default.
-- State is derived from the manifest and lockfile.
-- Prefer Pixi repair commands over manual edits in `.pixi/`:
-  - `pixi install` — install/refresh from lock.
-  - `pixi reinstall` — resync the installed prefix to the lock.
-  - `pixi clean` — remove envs/cache.
+[environments]
+test = ["test"]                                   # shorthand
+prod = { features = ["prod"], solve-group = "g" } # share solve with another env
+lint = { features = ["lint"], no-default-feature = true }
+```
 
-### System requirements — declared inline on `workspace.platforms`
+`default` feature is implicit, included unless `no-default-feature = true`. `solve-group` makes envs share solved versions for common deps.
 
-- The old `[system-requirements]` table is deprecated; declare virtual packages inline:
+## Tasks
+
+```toml
+[tasks]
+simple = "echo hi"
+build = { cmd = "npm run build", cwd = "frontend", inputs = ["package.json"], outputs = ["dist"] }
+downstream = { cmd = "pytest", depends-on = "build" }   # hyphen, not underscore
+env-task = { cmd = "python run.py $ARG", env = { ARG = "v" }, args = [{ arg = "ARG", default = "v" }] }
+```
+
+Runner: `deno_task_shell` (cross-platform). `depends-on` accepts a string or list; cross-environment works. Prefix name with `_` to hide from `pixi task list`.
+
+## PyPI dependencies
+
+```toml
+[pypi-dependencies]
+fastapi = "*"
+pandas = { version = ">=1", extras = ["dataframe"] }
+pkg = { git = "https://github.com/org/pkg.git", rev = "abc123" }
+local = { path = "./local", editable = true }     # path relative to workspace root
+torch = { version = "*", index = "https://download.pytorch.org/whl/cu118" }
+```
+
+Fields: `version`, `extras`, `git`, `rev`, `branch`, `tag`, `subdirectory`, `path`, `editable`, `url`, `index`.
+
+## System requirements / CUDA
+
+Declare inline on `workspace.platforms`:
 
 ```toml
 [workspace]
@@ -84,74 +104,104 @@ platforms = [
 ]
 ```
 
-- Friendly keys: `platform` (required), `name`, `cuda` (`__cuda`), `glibc` (`__glibc`), `macos`/`osx` (`__osx`), `linux` (`__linux`), `windows` (`__win`), `archspec` (`__archspec`).
-- CLI: `pixi workspace platform add linux-64 --cuda 12`, `pixi workspace platform edit`, `pixi workspace platform list`.
-- Per-env `CONDA_OVERRIDE_*` env vars still override detected values.
+Friendly keys: `platform` (required), `name`, `cuda` (`__cuda`), `glibc` (`__glibc`), `macos`/`osx` (`__osx`), `linux` (`__linux`), `windows` (`__win`), `archspec` (`__archspec`). Bind a feature to a rich platform via `feature.<name>.platforms`. CLI: `pixi workspace platform add linux-64 --cuda 12`.
 
-### Lockfile flags
+## Target tables
 
-- `pixi.lock` (format v6) is backward-compatible only — older lock + newer pixi works; newer lock + older pixi fails. Don't hand-edit.
-- `--frozen` installs from lock as-is (no update even on mismatch); `--locked` refuses to run if lock is out of date (CI gate); the two conflict.
-- `pixi lock --check` exits non-zero on drift; `pixi update` re-resolves within manifest constraints; `pixi upgrade` loosens the manifest and updates manifest+lock.
+```toml
+[target.win-64.dependencies]
+python = "3.7"
+[target.osx.dependencies]      # 'osx' matches both osx-64 and osx-arm64
+python = "3.11"
+[target.unix.activation.env]
+LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
+```
 
-### Global tools
+Selectors: exact subdir (`linux-64`), family (`win`, `osx`, `linux`, `unix`), or rich-platform `name`. Target platform must be a subset of `workspace.platforms`.
 
-- Managed with `pixi global ...`; declarative manifest at `$PIXI_HOME/manifests/pixi-global.toml` (`PIXI_HOME` defaults to `~/.pixi`); env prefixes under `~/.pixi/global`.
-- Each install lives in an isolated conda env (pipx-style); only exposed executables go on `PATH`.
-- After manual global-manifest edits (or pulling one via VCS), run `pixi global sync` to rebuild envs from the manifest.
+## Channels & activation
 
-## General guidance derived from official behavior
+```toml
+[workspace]
+channels = ["conda-forge", "pytorch", "nvidia"]   # pytorch CUDA needs these
+channel-priority = "strict"
 
-### Native runtime issues
+[activation]
+scripts = ["env_setup.sh"]                         # .sh/.bash Unix, .bat Windows (called, not sourced)
+env = { LD_LIBRARY_PATH = "$CONDA_PREFIX/lib" }    # $VAR Unix, %VAR% Windows
+```
 
-- If a package fails with shared-library / ABI / compiler-runtime errors, check activation and dependency source before changing package versions.
-- Common variables for native builds/runtime lookup: `LD_LIBRARY_PATH`, `DYLD_FALLBACK_LIBRARY_PATH`, `PKG_CONFIG_PATH`, `CMAKE_PREFIX_PATH`, `CC`, `CXX`, `CUDA_HOME`.
-- Put stable project-level values in activation or task config rather than personal shell startup files.
+Env var priority: `task.env` > `activation.env` > `activation.scripts` > dependency activation scripts > outside env. Common native vars: `LD_LIBRARY_PATH`, `DYLD_FALLBACK_LIBRARY_PATH`, `PKG_CONFIG_PATH`, `CMAKE_PREFIX_PATH`, `CC`, `CXX`, `CUDA_HOME`.
 
-### Conda/PyPI mixed environments
+## Conda + PyPI resolution
 
-- Prefer Conda for foundational native dependencies and toolchains.
-- Prefer PyPI for leaf packages or packages unavailable on Conda.
-- Beware PyPI wheels that expect runtime libraries differing from those the env provides.
+Pixi resolves Conda first, maps to PyPI names, then resolves PyPI. When both provide a package, Conda wins. Prefer Conda for foundational native packages (`python`, `numpy`, `scipy`, `pytorch`, toolchains, CUDA libs). Prefer PyPI for packages unavailable on Conda. Beware PyPI wheels expecting runtime libs that differ from the env's.
 
-## Useful commands
+## Lockfile & install flags
 
-### Workspace
+`pixi.lock` (format v6), backward-compatible only — don't hand-edit.
 
-- `pixi info`
-- `pixi list`
-- `pixi list --explicit`
-- `pixi tree`
-- `pixi task list`
-- `pixi add <pkg>` / `pixi add --pypi <pkg>` / `pixi add --host|--build|--editable <pkg>`
-- `pixi remove <pkg>`
-- `pixi install`
-- `pixi reinstall`
-- `pixi clean`
-- `pixi run <task>`
-- `pixi exec -- <cmd>`
-- `pixi shell`
-- `pixi shell-hook` / `pixi shell-hook --json`
-- `pixi lock` / `pixi lock --check`
-- `pixi update [pkg]` / `pixi upgrade [pkg]`
-- `pixi workspace channel|platform|environment|feature …`
-- `pixi self-update`
+| Flag | Behavior |
+|---|---|
+| (none) | Update lock if manifest changed, then install |
+| `--frozen` | Install from lock as-is; do NOT update lock even on mismatch |
+| `--locked` | Refuse to run if lock is out of date (CI gate); conflicts with `--frozen` |
+| `--no-install` | Modify lock only, no env install |
+| `--as-is` (run/shell) | `--no-install --frozen` |
 
-### Global tools
+`pixi lock` — solve + write lock, no install; `--check` exits non-zero on drift (CI). `pixi update [pkg]` — re-resolve within manifest constraints. `pixi upgrade [pkg]` — loosen manifest requirements and rewrite manifest+lock.
 
-- `pixi global install <pkg>` — install a **new** global tool (isolated env per package by default; `--environment <name>` groups packages, `--with <dep>` adds non-exposed deps, `--expose name=exe` aliases, supports `--platform` and git/path sources)
-- `pixi global add <pkg> --environment <env>` — add a dependency to an **existing** global env (requires `--environment`; use `--expose` to expose executables)
-- `pixi global list`
-- `pixi global uninstall <env>` (remove a whole env)
-- `pixi global remove <pkg>` (remove a package from an env — opposite of `add`)
-- `pixi global update` / `pixi global update <env>`
-- `pixi global sync` (rebuild from manifest after manual edits / VCS pull)
-- `pixi global expose add <name>=<exe>` / `pixi global expose remove <name>`
-- `pixi global edit`
-- `pixi global tree [<env>]`
+## Global tools
 
-### Authentication
+Manifest-based (stable since v0.33). Manifest at `$PIXI_HOME/manifests/pixi-global.toml` (`PIXI_HOME` defaults to `~/.pixi`); env prefixes under `~/.pixi/global`.
 
-- `pixi auth login <host>` (`--token`, `--conda-token`, `--username`/`--password`, `--s3-*`, `--oauth*`)
-- `pixi auth logout <host>`
-- `pixi auth status`
+```toml
+version = 1
+[envs.ipython]
+channels = ["conda-forge"]
+dependencies = { ipython = "*" }
+exposed = { ipython = "ipython", ipython3 = "ipython3" }
+```
+
+- `pixi global install <pkg>` — install a **new** global tool (isolated env per package by default; `--environment <name>` groups packages, `--with <dep>` adds non-exposed deps, `--expose name=exe` aliases).
+- `pixi global add <pkg> --environment <env>` — add a dependency to an **existing** global env (requires `--environment`).
+- `pixi global uninstall <env>` — remove a whole env.
+- `pixi global remove <pkg>` — remove a package from an env (opposite of `add`).
+- `pixi global update` / `pixi global update <env>` — update global envs.
+- `pixi global sync` — rebuild envs from manifest (after manual edits / VCS pull).
+- `pixi global list`, `pixi global edit`, `pixi global tree [<env>]`, `pixi global expose add/remove <name>=<exe>`.
+
+## Common commands
+
+- Inspect: `pixi info`, `pixi list` (`--explicit`), `pixi tree`, `pixi task list`, `pixi search <pkg>`.
+- Deps: `pixi add <pkg>` (`--pypi`, `--host`, `--build`, `--feature`, `--editable`), `pixi remove <pkg>`.
+- Env: `pixi install` (`-e <env>`), `pixi reinstall`, `pixi clean`, `pixi lock` (`--check`), `pixi update [pkg]`, `pixi upgrade [pkg]`.
+- Run: `pixi run <task>`, `pixi exec -- <cmd>`, `pixi shell`, `pixi shell-hook` (`--json`).
+- Manifest: `pixi workspace channel|platform|environment|feature …`.
+- Self: `pixi self-update`.
+
+## Authentication
+
+`pixi auth login <host>` (`--token`, `--conda-token`, `--username`/`--password`, `--s3-*`, `--oauth*`), `pixi auth logout <host>`, `pixi auth status`.
+
+## Troubleshooting
+
+- Works in `pixi run` but not external shell/IDE → `pixi shell-hook --json`; check if vars belong in activation tables.
+- Native package loader/ABI errors → confirm runs inside activation; `pixi list --explicit` for dep source; check runtime library lookup needs activation vars.
+- Stale env → `pixi install`, `pixi reinstall`, `pixi clean`.
+- CI lock drift → `pixi lock --check` or `pixi install --locked`.
+
+## Pre-2025 → current migration
+
+Only relevant when editing an older manifest.
+
+| Old | Current |
+|---|---|
+| `[project]` table | `[workspace]` (`[tool.pixi.workspace]`) |
+| `pixi project channel/environment …` | `pixi workspace channel/environment …` |
+| `[system-requirements]` table | inline `workspace.platforms` entries |
+| `pixi global upgrade` / `upgrade-all` | `pixi global update` |
+| `pixi global remove <env>` (whole env) | `pixi global uninstall <env>` |
+| `depends_on` (underscore) | `depends-on` (hyphen) |
+| `pixi update` (loosen + bump all) | `pixi update` keeps constraints; `pixi upgrade` loosens |
+| `pixi login` / `pixi logout` standalone | `pixi auth login` / `pixi auth logout` |

@@ -3,44 +3,43 @@ name: pixi-skill
 description: "Manage Pixi workspaces, manifests, environments, tasks, lockfiles, and global tool environments. Use when working with pixi.toml, pyproject.toml configured for Pixi, pixi.lock, or Pixi global manifests; when adding or removing Conda/PyPI dependencies; when defining tasks, activation, features, or target-specific settings; or when installing and exposing global CLI tools."
 ---
 
-# Pixi
+# Pixi (0.81, 2026)
 
-Manage Pixi projects (pixi v0.7x / 2026). For full manifest syntax, command lists, behavior notes, and pre-2025 migration mappings, read `references/official-notes.md`.
+Verify behavior via `pixi run`/`pixi exec`, never a bare shell — activation is part of the runtime contract. Change manifests declaratively (`pixi add/remove` or TOML edits); never edit `.pixi/` by hand.
 
-## Working style
+## Decision rules
 
-- Preserve the project's existing manifest style unless migration is part of the task.
-- Prefer declarative manifest changes and Pixi commands over editing `.pixi/` by hand.
-- Use `pixi run`, `pixi exec`, or `pixi shell` when checking behavior — activation is part of the runtime contract.
+- `pyproject.toml` for Python-first projects; `pixi.toml` for mixed/non-Python.
+- Conda deps first (esp. `python`, `numpy`, `pytorch`, CUDA libs); `--pypi` only when a package is unavailable on conda or the project already uses wheels. Default channel is `conda-forge` only — add `pytorch`/`nvidia` explicitly for CUDA.
+- Repeatable commands → `[tasks]` (dependency key is `depends-on`, hyphen); one-offs → `pixi exec`.
+- `[activation.env]` for stable vars; activation scripts only for dynamic values.
+- Features/environments/target tables only when the project truly needs separate stacks.
 
-## Core decisions
+## update vs upgrade vs lock
 
-- **Manifest choice**: `pyproject.toml` for Python-first projects; `pixi.toml` for mixed-language or non-Python.
-- **Dependency source**: Conda first, PyPI only when needed or when the project already uses PyPI wheels.
-- **Tasks**: repeatable commands in `[tasks]`; `pixi exec -- <cmd>` for one-offs.
-- **Activation**: `[activation.env]` for stable vars; activation scripts only for dynamic values.
-- **Multiple environments**: features + environments + target tables only when the project truly needs separate stacks (`cpu`, `cuda`, `test`, `docs`).
+- `pixi update [pkg]` — re-resolve within existing manifest constraints.
+- `pixi upgrade [pkg]` — LOOSENS specs and rewrites manifest+lock (destructive to pins).
+- `--frozen` installs lock as-is; `--locked` fails on stale lock (CI gate). Both also work on standalone scripts with adjacent lock files.
 
-## Standard workflow
+## Global tools (conda MatchSpecs only — no `--pypi` yet)
 
-1. Inspect: `pixi info`, `pixi list`, `pixi task list`.
-2. Identify manifest: `pixi.toml` or `pyproject.toml`.
-3. Make the smallest declarative change: `pixi add <pkg>`, `pixi add --pypi <pkg>`, `pixi remove <pkg>`, or direct manifest edit for restructures.
-4. Validate: `pixi install`, `pixi run <task>`.
-5. If behavior differs across shells/tools: `pixi shell-hook --json`.
+- `pixi global install <pkg>` new env · `global add --environment E <pkg>` add dep · `global remove --environment E <pkg>` drop dep · `global uninstall E` delete env · `global sync` after editing `$PIXI_HOME/manifests/pixi-global.toml`.
 
-## Current-state facts
+## Network / config traps
 
-Pixi changed significantly pre-2025 → 2026. These are the current correct forms.
+- `~/.config/pixi/config.toml` sections are kebab-case: `[pypi-config] index-url`, `[mirrors]` (maps `conda.anaconda.org/<ch>` → mirror URL list), `[repodata-config] disable-sharded`/`disable-zstd`.
+- ⚠ Writing `[repodata]` (old name) is SILENTLY IGNORED — no error, no effect.
+- Repodata availability cache is keyed by canonical URL, valid 14 days → clear the repodata cache dir (`~/.cache/rattler/cache/repodata`, or its NFS-redirected `/tmp/pixi-cache-*/repodata`) after changing mirrors.
+- Campus-network mirrors (CERNET/NJU): zst yes, sharded repodata no → `disable-sharded = true`. `HTTPS_PROXY` is respected (`pixi self-update` needs it behind firewalls).
 
-- Top-level manifest table is `[workspace]` (`[tool.pixi.workspace]` in pyproject); required fields `name`, `channels`, `platforms`. Default channel is `conda-forge` only — add `pytorch`/`nvidia` explicitly for CUDA.
-- System requirements (CUDA, glibc, etc.) go inline on `workspace.platforms` entries.
-- Task dependency field is `depends-on` (hyphen), accepts a string or list.
-- `pixi global install <pkg>` creates a new isolated global env; `pixi global add <pkg> --environment <env>` adds a dep to an existing env; `pixi global uninstall <env>` removes a whole env; `pixi global remove <pkg>` removes a package.
-- `pixi update [pkg]` re-resolves within manifest constraints; `pixi upgrade [pkg]` loosens the manifest and rewrites manifest+lock.
-- Auth is `pixi auth login <host>` / `pixi auth logout` / `pixi auth status`.
-- Lockfile: `--frozen` installs from lock as-is; `--locked` fails if lock is stale (CI gate); the two conflict.
+## Newer surface
 
-## References
+- `pixi import <file>` — import environment.yml / requirements.txt into a workspace env (`--format`, `-e`, `-p`).
+- `pixi run script.py` — PEP 723 `/// script` header (Python, stable); `/// conda-script` (any language, experimental) embeds deps + `entrypoint` in-file — enable via `pixi config set experimental.conda-script true --global`; script-aware commands take `--script`; remote URLs/Gists run directly (0.81).
+- `pixi exec [COMMAND]...` — one-off temp env; `pixi exec -- <cmd>` guesses the package from the command, else specs via `-s`/`--with` (conda only). Purge: `pixi clean cache --exec`.
 
-- `references/official-notes.md` — full manifest syntax (environments, tasks, PyPI deps, system requirements, target tables, channels, activation), lockfile flags, global tools, command lists, auth, troubleshooting, and pre-2025 → current migration table. Read when editing manifests by hand, debugging activation/native errors, or migrating an older manifest.
+## References (read on demand)
+
+- `references/manifest.md` — full TOML syntax: workspace, features/environments, tasks, pypi-dependencies, CUDA rich-platform requirements, target tables, activation, pre-2025 migration. Read when hand-editing or migrating a manifest.
+- `references/operations.md` — lockfile flags (v7), global-tools manifest/CLI detail, exec, auth, troubleshooting. Read for env/CLI/lock problems.
+- `references/config-network.md` — config.toml anatomy, mirror/cache mechanics, proxy, `pixi import`, single-file scripts. Read for mirror/network/setup issues or script workflows.

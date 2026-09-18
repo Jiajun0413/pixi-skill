@@ -2,11 +2,24 @@
 
 Read when hand-editing or migrating pixi.toml / pyproject.toml.
 
+## Contents
+
+- Workspace
+- Version specifiers
+- Environments & features
+- Tasks
+- PyPI dependencies
+- System requirements / CUDA
+- Target tables
+- Channels & activation
+- Conda + PyPI resolution
+- Pre-2025 → current migration
+
 Canonical docs root: `https://pixi.prefix.dev/latest/` (manifest: `/reference/pixi_manifest/`, CLI: `/reference/cli/pixi/`).
 
 ## Workspace
 
-Top-level table `[workspace]` (`[tool.pixi.workspace]` in pyproject). Required: `name`, `channels`, `platforms`. Optional: `version`, `authors`, `description`, `license`, `channel-priority` (strict default; flexible options since 0.76), `solve-strategy`, `requires-pixi`, `exclude-newer`, `conda-pypi-map`. TOML 1.1 is supported (0.73+).
+Top-level table `[workspace]` (`[tool.pixi.workspace]` in pyproject). Required: `name`, `channels`, `platforms`. Optional: `version`, `authors`, `description`, `license`, `channel-priority` (strict default; flexible options since 0.76), `solve-strategy`, `requires-pixi`, `exclude-newer`, `conda-pypi-map`.
 
 ```toml
 [workspace]
@@ -60,7 +73,7 @@ local = { path = "./local", editable = true }     # path relative to workspace r
 torch = { version = "*", index = "https://download.pytorch.org/whl/cu118" }
 ```
 
-Path deps also via `pixi add --path <path>` (conda/PyPI/ROS package.xml, 0.78+).
+Path deps also via `pixi add --path <path>` (conda/PyPI/ROS).
 
 ## System requirements / CUDA
 

@@ -14,7 +14,7 @@ Read for lockfile, global tools, exec, auth, or troubleshooting questions.
 | `--no-install` | Modify lock only |
 | `--as-is` (run/shell) | `--no-install --frozen` |
 
-`pixi lock --check` exits non-zero on lock drift (CI). `pixi update [pkg]` re-resolves within constraints; `pixi upgrade [pkg]` loosens specs and rewrites manifest+lock. Both apply to standalone scripts with adjacent lock files.
+`pixi lock --check` exits non-zero on lock drift (CI). Scripts with adjacent lock files follow the same update/upgrade rules.
 
 ## Global tools
 

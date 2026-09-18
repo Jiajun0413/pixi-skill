@@ -4,7 +4,7 @@ Read for mirror/network/setup issues, cache weirdness, or single-file script wor
 
 ## Config file anatomy
 
-Global: `~/.config/pixi/config.toml`; per-project: `.pixi/config.toml` (higher priority). CLI: `--config-file <path>`, `--no-config`. All section names are **kebab-case**. Config is shared with other rattler-based tools (rattler-build, rattler-index) since 0.78.
+Global: `~/.config/pixi/config.toml`; per-project: `.pixi/config.toml` (higher priority). CLI: `--config-file <path>`, `--no-config`. All section names are **kebab-case**. Config is shared with other rattler-based tools (0.78+).
 
 ```toml
 [pypi-config]
